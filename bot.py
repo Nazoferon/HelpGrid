@@ -5,10 +5,11 @@ from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text, Command
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from config import TOKEN_API, user_id, PAYMENTS_TOKEN
+from config import TOKEN_API, user_id, PAYMENTS_TOKEN, LIQPAY_PRIVATE_KEY, LIQPAY_PUBLIC_KEY
 from news import check_news_update_json, search_news
 from bs4 import BeautifulSoup
 from time import sleep
+from aioliqpay import LiqPay
 from datetime import datetime, timedelta
 
 
@@ -64,7 +65,7 @@ async def start_command(message: types.Message):
     if is_user_in_blacklist(user_id):
         await message.reply("Ви знаходитесь в Чорному списку і не можете використовувати функціонал бота.")
     else:
-        await message.answer('Ласкаво просимо до нашого бота 👋\nВикористовуйте команду /help або плитки для керування ботом.', 
+        await message.answer('Ласкаво просимо до нашого бота 👋\nВикористовуйте команду /help або плитки для керування.', 
         reply_markup=kb.kb_main_menu)
         # await bot.send_sticker(message.from_user.id,
         #                        sticker='CAACAgIAAxkBAAEHm6dj4Q2eNiL4v-vpqPwp86LJYYdSxgACbRQAAvh48Ev_35tLbqKxRy4E',
@@ -285,61 +286,103 @@ async def help_command(message: types.Message):
         await message.reply("Ви знаходитесь в Чорному списку і не можете використовувати функціонал бота.")
         return
     await message.answer(text=text_info.REKVIZYTY, reply_markup=kb.kb_pay_menu)
+
 #PRICE
+LIQPAY_PUBLIC_KEY = "sandbox_i51470674466"  # Публічний ключ LiqPay
+LIQPAY_PRIVATE_KEY = "sandbox_NeqL8uNMwQ0X7EOmDzascREFGpea0ComaTbjCdKI"  # Приватний ключ LiqPay
 
-PRICE = types.LabeledPrice(label='TEST', amount=21000)
+liqpay = LiqPay(public_key=LIQPAY_PUBLIC_KEY, private_key=LIQPAY_PRIVATE_KEY)
 
-@dp.message_handler(text=['Оплата через Telegram'])
+@dp.message_handler(text='Оплата через Telegram')
 async def process_buy_command(message: types.Message):
     user_id = message.from_user.id
     if is_user_in_blacklist(user_id):
         await message.reply("Ви знаходитесь в Чорному списку і не можете використовувати функціонал бота.")
         return
+
     if PAYMENTS_TOKEN.split(':')[1] == 'TEST':
-        await bot.send_message(message.chat.id, text='Демо сповіщення перед покупкою')
-        await bot.send_invoice(
-    message.chat.id,
-    title='Оплата послуги за інтернет 100Мб\с',
-    description='Ви оплачуєте оптоволоконний інтернет зі швидкістю 100Мб\с за допомогою Telegram бота',
-    provider_token=PAYMENTS_TOKEN,
-    currency='uah',
-    photo_url='https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/LIQPAY_logos.svg/2560px-LIQPAY_logos.svg.png',
-    photo_height=100,  # !=0/None, інакше зображення не з'явиться
-    photo_width=250,
-    photo_size=100,
-    is_flexible=False,  # True якщо кінцева ціна залежить від способу доставки
-    prices=[PRICE],
-    start_parameter='time-machine-example',
-    payload='some-invoice-payload-for-our-internal-use'
-)
+        await bot.send_message(message.chat.id, text='Оберіть послугу для оплати:', reply_markup=kb.ikeyboard_prices)
 
+def get_price_for_tariff(tariff):
+    prices = {
+        '_Оптимальний': '110',
+        '_Шалений': '130',
+        '_PON': '170',
+        '_Пільговий': '70',
+        '_Базовий': '99',
+        '_PON+Телебачення': '200',
+        '_Оптимальний+Телебачення': '170',
+        '_Шалений+Телебачення': '190'
+    }
+    return prices.get(tariff, '0')
 
-async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
-    user_id = message.from_user.id
+@dp.callback_query_handler(lambda c: c.data.startswith('_'))
+async def process_tariff_selection(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
     if is_user_in_blacklist(user_id):
-        await message.reply("Ви знаходитесь в Чорному списку і не можете використовувати функціонал бота.")
+        await bot.send_message(user_id, "Ви знаходитесь в Чорному списку і не можете використовувати функціонал бота.")
         return
-    await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
-    await bot.send_message(pre_checkout_query.from_user.id, 'Дякуємо за оплату! Ваше замовлення буде оброблено.')
-    
-@dp.message_handler(content_types=ContentType.SUCCESSFUL_PAYMENT)
+
+    selected_tariff = callback_query.data
+    selected_price = get_price_for_tariff(selected_tariff)
+    await bot.send_message(callback_query.from_user.id, f"Ви вибрали тариф <b>{selected_tariff}</b>. Ціна: <b>{selected_price}</b>грн.")
+
+    prices = [
+        types.LabeledPrice(
+            label='Ціна тарифу',
+            amount=int(selected_price) * 100
+        )
+    ]
+
+
+    invoice_message = await bot.send_invoice(
+        callback_query.from_user.id,
+        title=selected_tariff,
+        description=' ',
+        provider_token=PAYMENTS_TOKEN,
+        currency='uah',
+        photo_url='https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/LIQPAY_logos.svg/2560px-LIQPAY_logos.svg.png',
+        photo_height=100,
+        photo_width=250,
+        photo_size=100,
+        is_flexible=False,
+        prices=prices,
+        start_parameter='time-machine-example',
+        payload='service-payment',
+        need_name=True,
+        need_phone_number=True,
+        need_email=True
+    )
+
+@dp.pre_checkout_query_handler()
+async def process_pre_checkout_query(pre_checkout_query: types.PreCheckoutQuery):
+    await bot.answer_pre_checkout_query(
+        pre_checkout_query.id,
+        ok=True
+    )
+
+@dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT)
 async def process_successful_payment(message: types.Message):
     user_id = message.from_user.id
     if is_user_in_blacklist(user_id):
         await message.reply("Ви знаходитесь в Чорному списку і не можете використовувати функціонал бота.")
         return
-    print('successful_payment:')
-    pmnt = message.successful_payment.to_python()
-    for key, val in pmnt.items():
-        print(f'{key} = {val}')
+    payment_info = message.successful_payment
+    payment_id = payment_info.provider_payment_charge_id
+    payer_name = payment_info.order_info.name
+    phone_number = payment_info.order_info.phone_number
+    email = payment_info.order_info.email
 
-    await bot.send_message(
-        message.chat.id,
-        messages['successful_payment'].format(
-            total_amount=message.successful_payment.total_amount // 100,
-            currency=message.successful_payment.currency
-        )
-    )
+    payment_info_text = f"ПРОЙШЛА ОПЛАТА\n\n" \
+                        f"ID оплати: <b><code>{payment_id}</code></b>\n" \
+                        f"Ім'я платника: {payer_name}\n" \
+                        f"Мобільний номер платника: <code>+{phone_number}</code>\n" \
+                        f"Електронна пошта платника: <code>{email}</code>"
+
+    await bot.send_message(ADMIN_CONF_ID, text=payment_info_text)
+    await bot.send_message(message.chat.id, "Дякуємо за оплату! Платіж успішно оброблено.", reply_markup=kb.kb_main_menu)
+
+
 
 #===========================================ID===============================================================
 
@@ -628,5 +671,5 @@ async def view_tables(message: types.Message):
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.create_task(news_every_minute())
+    #loop.create_task(news_every_minute())
     executor.start_polling(dp, on_startup=on_startup, skip_updates=True)

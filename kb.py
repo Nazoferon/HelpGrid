@@ -51,3 +51,26 @@ ik_communication = InlineKeyboardButton(text='Зв\'язок з нами',
                                 url='http://ttinv.org.ua/contacts/')
 ikeyboard_communication.add(ik_communication)
 #=========================================================================
+# ikeyboard_prices = InlineKeyboardMarkup()
+# ik_prices_inet1 = InlineKeyboardButton(text='Оптимальний', callback_data='internet_Оптимальний')
+# ik_prices_inet2 = InlineKeyboardButton(text='Шалений NET', callback_data='internet_Шалений')
+# ik_prices_inet3 = InlineKeyboardButton(text='PON', callback_data='internet_PON')
+# ik_prices_tv1 = InlineKeyboardButton(text='Пільговий', callback_data='tv_Пільговий')
+# ik_prices_tv2 = InlineKeyboardButton(text='Базовий', callback_data='tv_Базовий')
+# ikeyboard_prices.add(ik_prices_inet1, ik_prices_inet2, ik_prices_inet3, ik_prices_tv1, ik_prices_tv2)
+ikeyboard_prices = InlineKeyboardMarkup()
+ikeyboard_prices.row(
+    InlineKeyboardButton(text='Оптимальний', callback_data='_Оптимальний'),
+    InlineKeyboardButton(text='Шалений NET', callback_data='_Шалений'),
+    InlineKeyboardButton(text='PON', callback_data='_PON')
+)
+ikeyboard_prices.row(
+    InlineKeyboardButton(text='Пільговий', callback_data='_Пільговий'),
+    InlineKeyboardButton(text='Базовий', callback_data='_Базовий')
+)
+ikeyboard_prices.row(
+    InlineKeyboardButton(text='PON + ТБ', callback_data='_PON+Телебачення'),
+    InlineKeyboardButton(text='Оптимальний + ТБ', callback_data='_Оптимальний+Телебачення'),
+    InlineKeyboardButton(text='Шалений + ТБ', callback_data='_Шалений+Телебачення')
+)
+#=========================================================================
