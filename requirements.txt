@@ -4,4 +4,3 @@ bs4
 lxml
 requests
 datetime
-sqlite3
